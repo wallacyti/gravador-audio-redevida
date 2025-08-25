@@ -1,0 +1,18 @@
+# Ambientes Virtuais do Python
+.venv/
+venv/
+env/
+
+# Pastas de build e distribuição
+build/
+dist/
+
+# Arquivos de configuração pessoal
+config.ini
+
+# Cache e arquivos temporários do Python
+__pycache__/
+*.pyc
+
+# Arquivos de build do PyInstaller
+*.spec
