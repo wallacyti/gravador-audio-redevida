@@ -20,8 +20,8 @@ CONFIG_FILE = 'config.ini'; config = configparser.ConfigParser(); gravando = Fal
 audio_data_em_memoria = None; playback_active = False; is_paused = False
 playback_position = 0; seek_request = -1; FORMAT = pyaudio.paInt16
 COR_PRINCIPAL = "#004b8d"; COR_ACENTO = "#f6b223"; COR_BOTAO_TEXTO = "#ffffff"; COR_FUNDO_JANELA = "#f0f2f5"
-COR_PRINCIPAL_DIM = "#b0c4de"
-COR_CURSOR = "#e74c3c"
+COR_PRINCIPAL_DIM = "#b0c4de" 
+COR_CURSOR = "#e74c3c"       
 FONTE_PADRAO = ("Lato", 10); FONTE_LABEL = ("Lato", 11); FONTE_TITULO = ("Lato", 12, "bold")
 playback_lock = threading.Lock(); p_audio = pyaudio.PyAudio()
 hotkey_listener_thread = None
@@ -319,6 +319,9 @@ def open_editor_window():
         time_label.config(text=f"{format_time(current_seconds)} / {format_time(total_duration)}")
         editor_win.after(50, update_playback_ui)
 
+    # ========================================================================
+    # FUNÇÃO CORRIGIDA PARA O BUG DO "SEEK"
+    # ========================================================================
     def playback_thread_editor_logic():
         nonlocal is_playing_selection, selection_start_px, selection_end_px
         global playback_active, is_paused, playback_position, seek_request
@@ -328,11 +331,25 @@ def open_editor_window():
         try:
             taxa = int(taxa_var.get()); canais = 1 if 'Mono' in canais_var.get() else 2
             stream = p_audio.open(format=FORMAT, channels=canais, rate=taxa, output=True)
+            
             while playback_active:
+                # 1. VERIFICA PRIMEIRO O PEDIDO DE PULAR (SEEK)
+                with playback_lock:
+                    if seek_request != -1:
+                        playback_position = seek_request
+                        seek_request = -1
+                
+                # 2. VERIFICA SE ESTÁ PAUSADO
+                if is_paused:
+                    time.sleep(0.05)
+                    continue # Volta ao topo do loop para poder checar um novo seek
+
+                # 3. LÓGICA DE FIM DE ÁUDIO
                 end_byte = len(audio_data_em_memoria)
                 if is_playing_selection and selection_end_px is not None and selection_start_px is not None:
                     end_px = max(selection_start_px, selection_end_px)
                     end_byte = int((end_px / WAVEFORM_WIDTH) * len(audio_data_em_memoria))
+
                 if playback_position >= end_byte:
                     with playback_lock:
                         is_paused = True
@@ -344,14 +361,9 @@ def open_editor_window():
                         else:
                             playback_position = 0
                             editor_win.after(0, lambda: btn_play_pause.config(text="🔄"))
-                while is_paused and playback_active:
-                    time.sleep(0.05)
-                if not playback_active: break
-                with playback_lock:
-                    if is_paused: continue
-                    if seek_request != -1:
-                        playback_position = seek_request
-                        seek_request = -1
+                    continue # Volta ao topo
+
+                # 4. TOCA O ÁUDIO
                 chunk_size = 1024
                 data_to_play = audio_data_em_memoria[playback_position : playback_position + chunk_size]
                 if not data_to_play:
@@ -359,6 +371,7 @@ def open_editor_window():
                     continue
                 stream.write(data_to_play)
                 playback_position += len(data_to_play)
+
         except Exception as e:
             if playback_active and editor_win.winfo_exists(): messagebox.showerror("Erro de Reprodução", f"Erro: {e}", parent=editor_win)
         finally:
@@ -458,7 +471,7 @@ def start_hotkey_listener():
 janela = ttk.Window(themename="litera"); janela.title("Gravador OFF TV - REDEVIDA"); janela.geometry("550x580"); janela.resizable(False, False); janela.protocol("WM_DELETE_WINDOW", on_app_close)
 try:
     janela.iconbitmap(resource_path("assets/mic_icon.ico"))
-except tk.TclError: print("Aviso: Arquivo 'mic_icon.ico' não encontrado.")
+except tk.TclError: print("Aviso: Arquivo 'assets/mic_icon.ico' não encontrado.")
 style = ttk.Style(); style.configure('.', background=COR_FUNDO_JANELA, font=FONTE_PADRAO); style.configure('TLabel', foreground=COR_PRINCIPAL, font=FONTE_LABEL)
 style.configure('TLabelframe', bordercolor=COR_PRINCIPAL); style.configure('TLabelframe.Label', foreground=COR_PRINCIPAL, font=FONTE_TITULO)
 style.configure('success.TButton', background=COR_PRINCIPAL, font=FONTE_TITULO, borderwidth=0); style.map('success.TButton', background=[('active', '#003a6e')], focuscolor=[('!active', COR_PRINCIPAL)])
@@ -503,3 +516,4 @@ label_status = ttk.Label(status_frame, text="Pronto para gravar.", justify=LEFT,
 mudar_estado_interface('inicial')
 hotkey_listener_thread = start_hotkey_listener()
 janela.mainloop()
+
