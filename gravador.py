@@ -20,9 +20,8 @@ CONFIG_FILE = 'config.ini'; config = configparser.ConfigParser(); gravando = Fal
 audio_data_em_memoria = None; playback_active = False; is_paused = False
 playback_position = 0; seek_request = -1; FORMAT = pyaudio.paInt16
 COR_PRINCIPAL = "#004b8d"; COR_ACENTO = "#f6b223"; COR_BOTAO_TEXTO = "#ffffff"; COR_FUNDO_JANELA = "#f0f2f5"
-# --- MELHORIA VISUAL ---
-COR_PRINCIPAL_DIM = "#b0c4de" # Azul bem mais claro para a parte não selecionada
-COR_CURSOR = "#e74c3c"       # Vermelho vivo para o cursor de reprodução
+COR_PRINCIPAL_DIM = "#b0c4de"
+COR_CURSOR = "#e74c3c"
 FONTE_PADRAO = ("Lato", 10); FONTE_LABEL = ("Lato", 11); FONTE_TITULO = ("Lato", 12, "bold")
 playback_lock = threading.Lock(); p_audio = pyaudio.PyAudio()
 hotkey_listener_thread = None
@@ -32,8 +31,10 @@ WAVEFORM_HEIGHT = 150
 
 # --- FUNÇÕES ---
 def resource_path(relative_path):
-    try: base_path = sys._MEIPASS
-    except Exception: base_path = os.path.abspath(".")
+    try:
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
     return os.path.join(base_path, relative_path)
 
 def format_time(seconds):
@@ -143,20 +144,17 @@ def gravar_audio():
     finally:
         if stream and stream.is_active(): stream.stop_stream(); stream.close()
 
-# --- JANELA DE EDIÇÃO E SUAS FUNÇÕES ---
 def open_editor_window():
     global playback_active, is_paused, audio_data_em_memoria
     if not audio_data_em_memoria: messagebox.showwarning("Atenção", "Nenhum áudio gravado."); return
     if playback_active: messagebox.showinfo("Atenção", "O editor já está aberto."); return
 
     editor_win = ttk.Toplevel(master=janela, title="Editor de Áudio"); editor_win.resizable(False, False); editor_win.transient(janela)
-
     selection_start_px = None
     selection_end_px = None
     is_playing_selection = False
     audio_history = []
     playback_head = None
-
     main_editor_frame = ttk.Frame(editor_win, padding=15); main_editor_frame.pack(fill=BOTH, expand=YES)
     waveform_canvas = tk.Canvas(main_editor_frame, width=WAVEFORM_WIDTH, height=WAVEFORM_HEIGHT, bg="#f0f2f5", highlightthickness=1, highlightbackground=COR_PRINCIPAL)
     waveform_canvas.pack(fill=X, expand=YES, pady=(0, 10))
@@ -171,7 +169,7 @@ def open_editor_window():
         nonlocal is_playing_selection
         with playback_lock:
             is_paused = not is_paused
-            is_playing_selection = False 
+            is_playing_selection = False
         if btn_play_pause['text'] != "🔄":
             btn_play_pause.config(text="▶" if is_paused else "⏸")
 
@@ -200,63 +198,49 @@ def open_editor_window():
 
     btn_delete = ttk.Button(edit_controls_frame, text="🗑️ Apagar Seleção", state=DISABLED, command=perform_delete); btn_delete.pack(side=LEFT, padx=5)
     btn_undo = ttk.Button(edit_controls_frame, text="Desfazer", state=DISABLED, command=perform_undo); btn_undo.pack(side=LEFT, padx=5)
-    # --- MUDANÇA NO FLUXO DE TRABALHO ---
     btn_confirm_edit = ttk.Button(edit_controls_frame, text="✔️ Concluir Edição", style="success.TButton", command=lambda: on_editor_close()); btn_confirm_edit.pack(side=LEFT, padx=5)
-    
+
     def draw_waveform(canvas, audio_data):
         nonlocal playback_head, selection_start_px, selection_end_px
         canvas.delete("wave")
         width, height = WAVEFORM_WIDTH, WAVEFORM_HEIGHT
         if playback_head: canvas.delete(playback_head)
         canvas.create_line(0, height / 2, width, height / 2, fill="#d9d9d9", tags="wave")
-
         if not audio_data or len(audio_data) < 2:
-            playback_head = canvas.create_line(0, 0, 0, height, fill=COR_CURSOR, width=2) # CORREÇÃO VISUAL
+            playback_head = canvas.create_line(0, 0, 0, height, fill=COR_CURSOR, width=2)
             return
-
         try:
             samples = np.frombuffer(audio_data, dtype=np.int16)
             num_channels = 1 if 'Mono' in canais_var.get() else 2
             if num_channels == 2: samples = samples[::2]
-            
             samples_per_pixel = len(samples) // width
             if samples_per_pixel < 1: samples_per_pixel = 1
-            
             num_samples_to_process = width * samples_per_pixel
             usable_samples = samples[:num_samples_to_process]
             blocks = usable_samples.reshape((width, samples_per_pixel))
-            
             min_vals, max_vals = blocks.min(axis=1), blocks.max(axis=1)
-            
             min_normalized = min_vals / 32768.0
             max_normalized = max_vals / 32768.0
-            
             half_height = height / 2
             y0 = half_height - (max_normalized * half_height * 0.95)
             y1 = half_height - (min_normalized * half_height * 0.95)
-            
             start_x, end_x = -1, -1
             if selection_start_px is not None and selection_end_px is not None:
                 start_x, end_x = min(selection_start_px, selection_end_px), max(selection_start_px, selection_end_px)
-
             for x, (val0, val1) in enumerate(zip(y0, y1)):
                 color = COR_ACENTO if start_x <= x < end_x else COR_PRINCIPAL_DIM
                 canvas.create_line(x, val0, x, val1, fill=color, width=1, tags="wave")
-
         except Exception as e:
             print(f"Erro ao desenhar waveform com NumPy: {e}")
             canvas.create_line(0, height / 2, width, height / 2, fill="red", tags="wave")
-
         canvas.tag_lower("wave")
-        playback_head = canvas.create_line(0, 0, 0, height, fill=COR_CURSOR, width=2) # CORREÇÃO VISUAL
-    
+        playback_head = canvas.create_line(0, 0, 0, height, fill=COR_CURSOR, width=2)
+
     def update_editor_ui():
         nonlocal selection_start_px, selection_end_px
         selection_start_px, selection_end_px = None, None
         draw_waveform(waveform_canvas, audio_data_em_memoria)
-        
         btn_delete.config(state=DISABLED); btn_play_selection.config(state=DISABLED)
-        
         taxa = int(taxa_var.get()); canais = 1 if 'Mono' in canais_var.get() else 2
         bytes_per_sample = p_audio.get_sample_size(FORMAT)
         bytes_per_second = taxa * canais * bytes_per_sample
@@ -282,16 +266,13 @@ def open_editor_window():
         nonlocal selection_start_px, selection_end_px
         if selection_start_px is None: return
         selection_end_px = event.x
-        
         if abs(selection_end_px - selection_start_px) > 4:
             btn_delete.config(state=NORMAL); btn_play_selection.config(state=NORMAL)
         else:
             selection_start_px, selection_end_px = None, None
             draw_waveform(waveform_canvas, audio_data_em_memoria)
-            
             percentage = event.x / WAVEFORM_WIDTH
             target_byte = int(len(audio_data_em_memoria) * percentage)
-            
             frame_size = (p_audio.get_sample_size(FORMAT) * (1 if 'Mono' in canais_var.get() else 2))
             if target_byte % frame_size != 0:
                 target_byte = (target_byte // frame_size) * frame_size
@@ -300,26 +281,20 @@ def open_editor_window():
     def play_selection():
         nonlocal is_playing_selection
         global seek_request, is_paused
-        
         if selection_start_px is None or selection_end_px is None: return
-
         start_px = min(selection_start_px, selection_end_px)
         start_byte = int((start_px / WAVEFORM_WIDTH) * len(audio_data_em_memoria))
-        
         frame_size = (p_audio.get_sample_size(FORMAT) * (1 if 'Mono' in canais_var.get() else 2))
         if start_byte % frame_size != 0:
             start_byte = (start_byte // frame_size) * frame_size
-        
         with playback_lock:
             is_playing_selection = True
             seek_request = start_byte
             is_paused = False
-        
         if btn_play_pause['text'] != "⏸":
             btn_play_pause.config(text="⏸")
-            
-    btn_play_selection.config(command=play_selection)
 
+    btn_play_selection.config(command=play_selection)
     waveform_canvas.bind("<ButtonPress-1>", start_selection)
     waveform_canvas.bind("<B1-Motion>", drag_selection)
     waveform_canvas.bind("<ButtonRelease-1>", end_selection)
@@ -336,7 +311,6 @@ def open_editor_window():
         if total_len > 0 and playback_head:
             head_x = (current_pos / total_len) * WAVEFORM_WIDTH
             waveform_canvas.coords(playback_head, head_x, 0, head_x, WAVEFORM_HEIGHT)
-        
         taxa = int(taxa_var.get()); canais = 1 if 'Mono' in canais_var.get() else 2
         bytes_per_sample = p_audio.get_sample_size(FORMAT)
         bytes_per_second = taxa * canais * bytes_per_sample
@@ -344,24 +318,21 @@ def open_editor_window():
         total_duration = total_len / bytes_per_second if bytes_per_second > 0 else 0
         time_label.config(text=f"{format_time(current_seconds)} / {format_time(total_duration)}")
         editor_win.after(50, update_playback_ui)
-    
+
     def playback_thread_editor_logic():
         nonlocal is_playing_selection, selection_start_px, selection_end_px
         global playback_active, is_paused, playback_position, seek_request
         playback_active = True; is_paused = True; playback_position = 0; seek_request = -1
         stream = None
         editor_win.after(0, lambda: btn_play_pause.config(text="▶"))
-        
         try:
             taxa = int(taxa_var.get()); canais = 1 if 'Mono' in canais_var.get() else 2
             stream = p_audio.open(format=FORMAT, channels=canais, rate=taxa, output=True)
-            
             while playback_active:
                 end_byte = len(audio_data_em_memoria)
                 if is_playing_selection and selection_end_px is not None and selection_start_px is not None:
                     end_px = max(selection_start_px, selection_end_px)
                     end_byte = int((end_px / WAVEFORM_WIDTH) * len(audio_data_em_memoria))
-
                 if playback_position >= end_byte:
                     with playback_lock:
                         is_paused = True
@@ -373,26 +344,21 @@ def open_editor_window():
                         else:
                             playback_position = 0
                             editor_win.after(0, lambda: btn_play_pause.config(text="🔄"))
-                
                 while is_paused and playback_active:
                     time.sleep(0.05)
-                
                 if not playback_active: break
-                
                 with playback_lock:
                     if is_paused: continue
                     if seek_request != -1:
                         playback_position = seek_request
                         seek_request = -1
-                
                 chunk_size = 1024
                 data_to_play = audio_data_em_memoria[playback_position : playback_position + chunk_size]
-                if not data_to_play: 
+                if not data_to_play:
                     playback_position = end_byte
                     continue
                 stream.write(data_to_play)
                 playback_position += len(data_to_play)
-
         except Exception as e:
             if playback_active and editor_win.winfo_exists(): messagebox.showerror("Erro de Reprodução", f"Erro: {e}", parent=editor_win)
         finally:
@@ -410,7 +376,7 @@ def descartar_gravacao():
 
 def salvar_gravacao():
     if not audio_data_em_memoria: return
-    if not entry_nome.get().strip(): 
+    if not entry_nome.get().strip():
         messagebox.showwarning("Atenção", "Por favor, digite um nome para o arquivo."); return
     nome_arquivo = entry_nome.get().strip()
     def save_thread():
@@ -424,7 +390,7 @@ def salvar_gravacao():
             if formato == "WAV":
                 caminho_final = os.path.join(caminho_destino, f"{nome_arquivo}.wav"); os.rename(caminho_temp_wav, caminho_final)
             elif formato == "MP3":
-                ffmpeg_path = resource_path("ffmpeg.exe")
+                ffmpeg_path = resource_path("assets/ffmpeg.exe")
                 if not os.path.exists(ffmpeg_path):
                     label_status.config(text=f"ERRO: ffmpeg.exe não encontrado."); os.remove(caminho_temp_wav); return
                 caminho_final = os.path.join(caminho_destino, f"{nome_arquivo}.mp3")
@@ -474,7 +440,7 @@ def update_meter():
 
 def on_app_close():
     global gravando
-    gravando = False; 
+    gravando = False;
     if p_audio: p_audio.terminate()
     janela.destroy()
 
@@ -489,10 +455,9 @@ def start_hotkey_listener():
         elif key_name == hotkey_stop: janela.after(0, parar_gravacao_ui)
     listener = keyboard.Listener(on_press=on_press_hotkey); listener.start(); return listener
 
-# --- CONSTRUÇÃO DA INTERFACE GRÁFICA ---
 janela = ttk.Window(themename="litera"); janela.title("Gravador OFF TV - REDEVIDA"); janela.geometry("550x580"); janela.resizable(False, False); janela.protocol("WM_DELETE_WINDOW", on_app_close)
 try:
-    janela.iconbitmap(resource_path("mic_icon.ico"))
+    janela.iconbitmap(resource_path("assets/mic_icon.ico"))
 except tk.TclError: print("Aviso: Arquivo 'mic_icon.ico' não encontrado.")
 style = ttk.Style(); style.configure('.', background=COR_FUNDO_JANELA, font=FONTE_PADRAO); style.configure('TLabel', foreground=COR_PRINCIPAL, font=FONTE_LABEL)
 style.configure('TLabelframe', bordercolor=COR_PRINCIPAL); style.configure('TLabelframe.Label', foreground=COR_PRINCIPAL, font=FONTE_TITULO)
@@ -507,13 +472,13 @@ load_settings()
 main_frame = ttk.Frame(janela, padding=(30, 25)); main_frame.pack(fill=BOTH, expand=YES)
 header_frame = ttk.Frame(main_frame); header_frame.pack(fill=X, pady=(0, 25))
 try:
-    LOGO_TARGET_HEIGHT = 52; img_pil = Image.open(resource_path("logo_redevida.png")); aspect_ratio = img_pil.width / img_pil.height
+    LOGO_TARGET_HEIGHT = 52; img_pil = Image.open(resource_path("assets/logo_redevida.png")); aspect_ratio = img_pil.width / img_pil.height
     new_width = int(LOGO_TARGET_HEIGHT * aspect_ratio); janela.logo_image_pil = img_pil.resize((new_width, LOGO_TARGET_HEIGHT), Image.LANCZOS)
     janela.logo_image = ImageTk.PhotoImage(janela.logo_image_pil); ttk.Label(header_frame, image=janela.logo_image).pack(side=LEFT)
 except Exception as e:
     print(f"Erro ao carregar logo: {e}"); ttk.Label(header_frame, text="Gravador OFF TV", font=("Lato", 18, "bold"), foreground=COR_PRINCIPAL).pack(side=LEFT)
 try:
-    janela.settings_icon_pil = Image.open(resource_path("settings_icon.png")).resize((32, 32), Image.LANCZOS); janela.settings_icon = ImageTk.PhotoImage(janela.settings_icon_pil)
+    janela.settings_icon_pil = Image.open(resource_path("assets/settings_icon.png")).resize((32, 32), Image.LANCZOS); janela.settings_icon = ImageTk.PhotoImage(janela.settings_icon_pil)
     btn_settings = ttk.Button(header_frame, image=janela.settings_icon, command=open_settings_window, style="light.TButton"); btn_settings.pack(side=RIGHT, anchor="ne")
 except Exception as e:
     print(f"Erro ao carregar ícone de config: {e}"); btn_settings = ttk.Button(header_frame, text="⚙️", command=open_settings_window, style="light.TButton"); btn_settings.pack(side=RIGHT, anchor="ne")
@@ -538,4 +503,3 @@ label_status = ttk.Label(status_frame, text="Pronto para gravar.", justify=LEFT,
 mudar_estado_interface('inicial')
 hotkey_listener_thread = start_hotkey_listener()
 janela.mainloop()
-
